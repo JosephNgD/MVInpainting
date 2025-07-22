@@ -88,7 +88,10 @@ class CrossViewAttnProcessor:
             key_self = attn.head_to_batch_dim(key)
             value_self = attn.head_to_batch_dim(value)
             attention_probs = attn.get_attention_scores(query, key_self, attention_mask)
-            hidden_states_self = torch.bmm(attention_probs, value_self)
+            hidden_states_self = torch.bmm(attention_probs, value_self).cpu()
+            del key_self, value_self, attention_probs
+            torch.cuda.empty_cache()
+            
             #######################################
 
             video_length = key.size()[0] // self.unet_chunk_size
@@ -97,9 +100,9 @@ class CrossViewAttnProcessor:
             ref2_frame_index = [2] * video_length
             ref3_frame_index = [3] * video_length
             
-            hidden_states_ref0 = compute_attn(attn, query, key, value, video_length, ref0_frame_index, attention_mask)
-            hidden_states_ref1 = compute_attn(attn, query, key, value, video_length, ref1_frame_index, attention_mask)
-            hidden_states_ref2 = compute_attn(attn, query, key, value, video_length, ref2_frame_index, attention_mask)
+            hidden_states_ref0 = compute_attn(attn, query, key, value, video_length, ref0_frame_index, attention_mask).cpu()
+            hidden_states_ref1 = compute_attn(attn, query, key, value, video_length, ref1_frame_index, attention_mask).cpu()
+            hidden_states_ref2 = compute_attn(attn, query, key, value, video_length, ref2_frame_index, attention_mask).cpu()
 
             key = rearrange(key, "(b f) d c -> b f d c", f=video_length)
             key = key[:, ref3_frame_index]
@@ -112,9 +115,12 @@ class CrossViewAttnProcessor:
         value = attn.head_to_batch_dim(value)
 
         attention_probs = attn.get_attention_scores(query, key, attention_mask)
-        hidden_states_ref3 = torch.bmm(attention_probs, value)
-        
+        hidden_states_ref3 = torch.bmm(attention_probs, value).cpu()
+        del key, value, attention_probs
+        torch.cuda.empty_cache()
+
         hidden_states = self.self_attn_coeff * hidden_states_self + (1 - self.self_attn_coeff) * torch.mean(torch.stack([hidden_states_ref0, hidden_states_ref1, hidden_states_ref2, hidden_states_ref3]), dim=0) if not is_cross_attention else hidden_states_ref3 
+        hidden_states = hidden_states.to('cuda')
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
         # linear proj
