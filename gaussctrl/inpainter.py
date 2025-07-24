@@ -152,6 +152,7 @@ class GaussCtrlPipeline():
 
             images = [current_data['image'] for current_data in chunked_data] # list of np array
             depth_images = [self.depth2disparity(current_data['depth_image']) for current_data in chunked_data]
+            # depth_images = [(current_data['depth_image']) for current_data in chunked_data]
             mask_images = [current_data['mask_image'] for current_data in chunked_data] 
 
             imgs = np.concatenate(images, axis=0)
@@ -186,6 +187,7 @@ class GaussCtrlPipeline():
                 bg_cntrl_edited_image = edited_image
                 img_np = bg_cntrl_edited_image.to(torch.float16).permute(1, 2, 0).clamp(0, 1).cpu().numpy()
                 img_pil = Image.fromarray((img_np * 255).astype("uint8"))
+                img_pil = img_pil.resize((1008, 567), resample=Image.LANCZOS)
                 img_pil.save(os.path.join(self.output_folder, f"edited_{global_idx:04d}.png"))
 
         print("#############################")
@@ -198,7 +200,8 @@ class GaussCtrlPipeline():
         Args: depth numpy array [1 512 512]
         Return: disparity
         """
-        disparity = 1 / (depth + 1e-5)
+        # disparity = 1 / (depth + 1e-5)
+        disparity = depth
         disparity_map = disparity / np.max(disparity) # 0.00233~1
         disparity_map = np.concatenate([disparity_map, disparity_map, disparity_map], axis=0)
         return disparity_map[None]
@@ -231,7 +234,7 @@ if __name__ == "__main__":
         mask_path=mask_folder,
         output_folder=output_folder,
         diffusion_ckpt='stable-diffusion-v1-5/stable-diffusion-v1-5',
-        edit_prompt="Concrete outdoor steps with no objects, clean and clear surface, natural shadows, and surrounding plants. No box or obstruction.",
+        edit_prompt="Concrete outdoor steps with no objects, clean and clear surface, natural shadows. No box or obstruction.",
         reverse_prompt="",
         ref_view_num=4,
         num_inference_steps=20,
